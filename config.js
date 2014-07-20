@@ -2,6 +2,6 @@ exports.database = {
 	type: 'mongodb',
 	hostname: 'localhost',
 	port: 27017,
-	user: '',
-	pwd: ''
+	user: 'sharedesk',
+	pwd: 'z0nHrTawzjbb'
 };

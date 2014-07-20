@@ -190,7 +190,7 @@ Uploader.prototype = {
     /**
      * @return null
      */
-    send : function(settings, file) {
+    send : function(settings, file, filename) {
 
 		console.log('SEND new FIle: ', file, settings);
 	
@@ -203,7 +203,8 @@ Uploader.prototype = {
 
 			var formData = new FormData();
 
-			formData.append(file.name, file);
+			// filename for screenshot/image upload or predefined filename
+			formData.append(file.name, file, filename);
 			
 			settings.beforeSend = function (xhr, s) {
 				s.data = formData;

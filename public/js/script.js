@@ -152,6 +152,7 @@ socket.on('moveFileAnnouce', function(file) {
 socket.on('renameFileAnnouce', function(file) {
 	console.log('<--- renameFileAnnouce', file);
 	$("#" + file.id).find('.title').text(file.value);
+
 });
 
 //Annouce file deletion 
@@ -173,6 +174,7 @@ socket.on('deleteFileNotAllowed', function(fileId) {
 	console.log('<--- deleteFileNotAllowed', fileId);
 	newMessage('You are not allowed to delete files', its_me_user);
 });
+
 //Fileupload finished and saved
 socket.on('progressAnnouce', function(file) {
 	console.log('<--- progressAnnouce', file);
@@ -1180,6 +1182,112 @@ $(function() {
 		ev.preventDefault();
 		return false;
 	
+	});
+
+	var imageUpload = function(item) {
+		if(!confirm("Do you want to upload image?")) return;
+
+		var blob = item.getAsFile();
+
+		//blob.name = 'screenshot.png';
+		
+		var uniqueID = Math.round(Math.random()*99999999);
+
+		
+		var newFile = {
+			tempFileId: uniqueID,
+			name: 'uploading...',
+			//x: grid[i].x,
+			//y: grid[i].y,
+			x: 20,
+			y: 20,
+			format: blob.type,
+			size: blob.size,
+			downloads: 0
+		};
+		console.log("newFile: " + newFile);
+		drawFile(newFile, true, true);
+		socket.emit('newFileAnnouce', newFile);
+
+		var today = new Date();
+		//Start Uploader
+		uploader.send({
+			url: '/upload/' + location.pathname.split('/')[1] + '/' + uniqueID,
+			type: 'POST',
+			dataType: 'json'
+		}, blob, 'screenshot_' + today.getTime() + '.png');
+	};
+
+	var handlePastedText = function(item) {
+		//var urlPattern = /(http|ftp|https):\/\/[\w-]+(\.[\w-]+)+([\w.,@?^=%&amp;:\/~+#-]*[\w@?^=%&amp;\/~+#-])?/
+		var urlPattern = /^(?:([A-Za-z]+):)?(\/{0,3})([0-9.\-A-Za-z]+)(?::(\d+))?(?:\/([^?#]*))?(?:\?([^#]*))?(?:#(.*))?$/;
+		var text = item.getAsString(function(s) {
+			var isUrl = urlPattern.test(s);
+			if(isUrl) {
+				if(!confirm("Should we upload file from URL?")) return;
+				// to something with url
+				
+				var uniqueID = Math.round(Math.random()*99999999);
+				
+				var newFile = {
+					tempFileId: uniqueID,
+					name: 'uploading...',
+					// x: grid[i].x,
+					// y: grid[i].y,
+					x: 20,
+					y: 20,
+					format: 'unknown',
+					// format: files[i].type,
+					// size: files[i].size,
+					downloads: 0
+				};
+
+				$.ajax({
+					url: '/uploadByUrl/' + location.pathname.split('/')[1] + '/' + uniqueID,
+					type: 'POST',
+					dataType: 'json',
+					//contentType: 'application/json',
+					data: { url: s }, //JSON.stringify(s) },
+					success: function(data) {
+						
+						if(data.state === 1) {
+							newFile.size = data.filesize;
+							drawFile(newFile, true, true);
+							socket.emit('newFileAnnouce', newFile);
+						} else if (data.state === 0) {
+							alert("not able to download");
+						}
+						
+						
+					},
+					error: function(data) {
+						//
+					}
+				});
+				fileTempId_already_exists.push(newFile.tempFileId);
+				drawUploadingFile(newFile);
+				
+			} else {
+				if(!confirm("Do you want to save pasted text as file?")) return;
+				// do something with text
+				alert("text: " + i + " " + s);
+			}
+		});
+	};
+
+	$('#filesWrapper, #chatWindow').bind('paste', function(ev) {
+		var items = ev.originalEvent.clipboardData.items;
+
+		//for (var i = 0; i < items.length; i++) {
+		// just get first clipboard entry, to prevent unintentional inserts
+		if(items.length > 0) {
+			if (items[0].kind == 'file') {
+				imageUpload(items[0]);
+			}
+			else if (items[0].kind == 'string') {
+				handlePastedText(items[0]);
+			}
+		}
 	});
 
 	$('#filesWrapper, #chatWindow').bind('dragenter', function(ev) {

@@ -107,15 +107,18 @@ module.exports = function(app) {
 			});			
 		});
 
+		//Save file's new name and annouce it
+		socket.on('renameFile', function(file) {
 
-		//newFileAnnouce
-		//---------
-		//Client joins his room and initialization begins
-		socket.on('newFileAnnouce', function(file) {		
-			//Annouce to other clients
-			socket.broadcast.to(socket.deskName).emit('newFileAnnouce', file);
+			//Save name in database
+			model.renameFile(file.id, file.value, function(error, _file) {				
+				if(error) console.log("setFileName error:", error);	
+				else {
+					//Annouce to other clients
+					socket.broadcast.to(socket.deskName).emit('renameFileAnnouce', file);
+				}
+			});		
 		});
-
 
 		//moveFile
 		//---------

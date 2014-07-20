@@ -19,6 +19,7 @@ var connect = require('connect'),
 	socketio = require('socket.io'),
 	url = require('url'),
 	crypto = require('crypto');
+	//jsdom = require('jsdom');
 
        
 // Setup Express
@@ -270,6 +271,96 @@ app.get('/:deskname/download/:fileid', function(req, res) {
 	});
 });
 
+// Upload Route
+// used to upload file with ajax
+app.post('/uploadByUrl/:deskname/:tempFileId', function(req, res) {
+	var tempFileId = req.params.tempFileId;
+	var url = req.body.url;
+	console.log("url: " + req.body.url);
+	//state(0): 
+	//state(1): file uploaded
+	var resObject = {
+		state: 1,
+		message: ''
+	}
+
+	var request = require('request');
+
+	var basedir = './uploads/';
+	var dir = basedir + req.params.deskname + '/';
+	var filePath = dir + tempFileId;
+
+	var requestResponse;
+	var pipe = request(url, function(error, response, body) {
+
+		
+		requestResponse = response;
+		if(!error && response.statusCode == 200) {
+			console.log("status 200");
+			// response.on('end', function(data) {
+			// 	file.write(data);
+			// });
+
+			
+			
+		}
+	}).pipe(fs.createWriteStream(filePath)).on('data', function(data) {
+		// ??
+		console.log("progress upload by URL");
+	}).on('close', function(){
+		var filename;
+		//console.log("inspect: response::" + util.inspect(requestResponse.headers, false, 1));
+		var mime_type = requestResponse.headers['content-type'].split(';')[0];
+		if(mime_type == 'text/html') {
+			var title = extractTitle(requestResponse.body);
+			filename = title + '.htm';
+		} else { //if (mime_type == 'text/plain') {
+			filename = extractFilename(url);
+		}
+		var temp_file = fs.stat(filePath, function(error, stat) {
+			if(error) { throw error; }
+				var file = {
+				name: filename,
+				path: filePath,
+				type: mime_type,
+				size: stat.size,
+			}
+			
+			saveFile(filename, file, tempFileId, req);
+			resObject.filesize = file.size;
+			res.send(resObject);
+		});
+
+		
+	});
+
+	
+});
+
+var extractFilename = function(url) {
+	//var filename = url.substring(path.lastIndexOf("/")+ 1);
+	var splittedURL = url.split('/');
+	splittedURL = splittedURL[splittedURL.length - 1];
+	splittedURL = splittedURL.split('?');
+	splittedURL = splittedURL[0];
+
+ 	filename = (splittedURL.match(/[^.]+(\.[^?#]+)?/) || [])[0];
+ 	return filename;
+}
+
+var extractTitle = function(body) {
+	//var htmlparser = require('htmlparser2');
+	var isOpenTitleTag = false;
+	var title;
+
+	var cheerio = require('cheerio');
+	var $ = cheerio.load(body);
+	title = $('title').text();
+	// not allowed characters in filesystem (windows)
+	title = title.replace(/[*|?:"<>\\\/]/gi, '_');
+	
+	return title;
+}
 
 // Upload Route
 // used to upload file with ajax
@@ -284,7 +375,6 @@ app.post('/upload/:deskname/:tempFileId', function(req, res) {
 		fields = [];
 
 	req.params.deskname = encodeURIComponent(req.params.deskname);
-	console.log(req.params);
 
 	var oldProgressPercentage = 0;
 	var dir = basedir + req.params.deskname;
@@ -334,59 +424,14 @@ app.post('/upload/:deskname/:tempFileId', function(req, res) {
 
 	// uploading file done, save to db
 	form.on('file', function(name, file) {
-		console.log('Upload Done this is our file: ', util.inspect(file));
-		var fileModel = {
-			name: file.name,
-			location: file.path,
-			x: -1,
-			y: -1,
-			format: file.type,
-			size: file.size,
-			downloads: 0
-		}
-
-		//Sending 'createFile' signal
-		app.model.createFile(req.params.deskname, fileModel, function(error) {
-			if (error) {
-				console.log('Desktop doesnt exist, so creating a new one',error);
-				app.model.createDesk(req.params.deskname, function(error) {
-					if (error) {
-						console.log('Creating Desktop error?: ',error);
-					} 
-					else {
-						app.model.createFile(req.params.deskname, fileModel, function(error) {
-							if (error) {
-								console.log('Error creating File', error);
-							}
-							else {
-		
-								
-								app.io.sockets.in(req.params.deskname).emit('fileSavedAnnouce', {
-									tempFileId: tempFileId,
-									file: fileModel
-								});
-
-							}
-						});
-					}
-				});
-			}
-			else {
-
-				
-				app.io.sockets.in(req.params.deskname).emit('fileSavedAnnouce', {
-					tempFileId: tempFileId,
-					file: fileModel
-				});
-			}
-		});
+		saveFile(name, file, tempFileId, req);
 	});
 
 	// start upload/receiving file
 	// close connection when done
 	form.parse(req, function(error, fields, files) {
 
-		//console.log('PARSE',util.inspect({fields: fields, files: files}));
+		console.log('PARSE',util.inspect({fields: fields, files: files}));
 
 		res.writeHead(200, {'content-type': 'text/plain'});
 		res.write('received upload:\n\n');
@@ -395,6 +440,56 @@ app.post('/upload/:deskname/:tempFileId', function(req, res) {
 	});
 
 });
+
+var saveFile = function(name, file, tempFileId, req) {
+	console.log('Upload Done this is our file: ', util.inspect(file));
+	console.log(util.inspect(file));
+	var fileModel = {
+		name: file.name,
+		location: file.path,
+		x: -1,
+		y: -1,
+		format: file.type,
+		size: file.size,
+		downloads: 0
+	}
+
+	//Sending 'createFile' signal
+	app.model.createFile(req.params.deskname, fileModel, function(error) {
+		if (error) {
+			console.log('Desktop doesnt exist, so creating a new one',error);
+			app.model.createDesk(req.params.deskname, function(error) {
+				if (error) {
+					console.log('Creating Desktop error?: ',error);
+				} 
+				else {
+					app.model.createFile(req.params.deskname, fileModel, function(error) {
+						if (error) {
+							console.log('Error creating File', error);
+						}
+						else {
+	
+							
+							app.io.sockets.in(req.params.deskname).emit('fileSavedAnnouce', {
+								tempFileId: tempFileId,
+								file: fileModel
+							});
+
+						}
+					});
+				}
+			});
+		}
+		else {
+
+			
+			app.io.sockets.in(req.params.deskname).emit('fileSavedAnnouce', {
+				tempFileId: tempFileId,
+				file: fileModel
+			});
+		}
+	});
+}
 
 
 // Password protection ROUTES
@@ -602,7 +697,7 @@ fs.stat(uploadFolder, function(error, stats) {
 });
 
 //having access to socket.io in controllers
-app.io = socketio.listen(app);
+app.io = socketio.listen(app, { log: false });
 app.io.disable('reconnect');
 
 //Configure socket.io
